@@ -8,16 +8,16 @@
  */
 package org.openhab.io.transport.mqtt.internal;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.List;
 import java.util.Properties;
 import java.util.Timer;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.*;
 
 import org.apache.commons.lang.StringUtils;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
@@ -85,7 +85,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Create a new connection with the given name.
-     * 
+     *
      * @param name
      *            for the connection.
      */
@@ -97,7 +97,7 @@ public class MqttBrokerConnection implements MqttCallback {
      * Start the connection. This will try to open an MQTT client connection to
      * the MQTT broker and notify all publishers and subscribers on this
      * connection that the connection has become active.
-     * 
+     *
      * @throws Exception
      *             If connection could not be created.
      */
@@ -139,7 +139,7 @@ public class MqttBrokerConnection implements MqttCallback {
     /**
      * Get the url for the MQTT broker. Valid URL's are in the format:
      * tcp://localhost:1883 or ssl://localhost:8883
-     * 
+     *
      * @return url for the MQTT broker.
      */
     public String getUrl() {
@@ -149,7 +149,7 @@ public class MqttBrokerConnection implements MqttCallback {
     /**
      * Set the url for the MQTT broker. Valid URL's are in the format:
      * tcp://localhost:1883 or ssl://localhost:8883
-     * 
+     *
      * @param url
      *            url string for the MQTT broker.
      */
@@ -166,7 +166,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Set the optional user name to use when connecting to the MQTT broker.
-     * 
+     *
      * @param user
      *            name to use for connection.
      */
@@ -183,7 +183,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Set the optional password to use when connecting to the MQTT broker.
-     * 
+     *
      * @param password
      */
     public void setPassword(String password) {
@@ -199,7 +199,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Set quality of service. Valid values are 0,1,2
-     * 
+     *
      * @param qos
      *            level.
      */
@@ -219,7 +219,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Set whether any published messages should be retained by the broker.
-     * 
+     *
      * @param retain
      *            true to retain.
      */
@@ -248,7 +248,7 @@ public class MqttBrokerConnection implements MqttCallback {
      * asynchronously (the message is sent and the sendign thread does not wait
      * for delivery completion). In the case of async, the sending thread
      * currently does not receive any feedback when delivery is completed.
-     * 
+     *
      * @param async
      */
     public void setAsync(boolean async) {
@@ -258,7 +258,7 @@ public class MqttBrokerConnection implements MqttCallback {
     /**
      * Set client id to use when connecting to the broker. If none is specified,
      * a default is generated.
-     * 
+     *
      * @param value
      *            clientId to use.
      */
@@ -268,7 +268,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Open an MQTT client connection.
-     * 
+     *
      * @throws Exception
      */
     private void openConnection() throws Exception {
@@ -329,7 +329,37 @@ public class MqttBrokerConnection implements MqttCallback {
                 // use standard JSSE available in the runtime and
                 // use TLSv1.2 which is the default for a secured mosquitto
                 SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
-                sslContext.init(null, new TrustManager[] { getVeryTrustingTrustManager() },
+
+                KeyManager[] keyManagers = null;
+                if (System.getProperty("javax.net.ssl.keyStore") != null) {
+
+                    KeyStore keyStore = KeyStore.getInstance(System.getProperty("javax.net.ssl.keyStoreType"),
+                            KeyStore.getDefaultType());
+
+                    FileInputStream fis = null;
+                    try {
+                        fis = new FileInputStream(System.getProperty("javax.net.ssl.keyStore"));
+                        char[] ksPass = System.getProperty("javax.net.ssl.keyStorePassword", "changeit").toCharArray();
+                        keyStore.load(fis, ksPass);
+
+                        KeyManagerFactory kmfactory = KeyManagerFactory.getInstance(
+                                KeyManagerFactory.getDefaultAlgorithm());
+
+                        kmfactory.init(keyStore, ksPass);
+
+                        keyManagers = kmfactory.getKeyManagers();
+                    } catch (IOException e) {
+                        logger.error("Failed to load specified javax.net.ssl.keyStore.", e);
+                    } finally {
+                        if (fis != null) {
+                            try {
+                                fis.close();
+                            } catch (IOException ignored) { /* close quietly */ }
+                        }
+                    }
+                }
+
+                sslContext.init(keyManagers, new TrustManager[] { getVeryTrustingTrustManager() },
                         new java.security.SecureRandom());
                 SSLSocketFactory socketFactory = sslContext.getSocketFactory();
                 options.setSocketFactory(socketFactory);
@@ -348,7 +378,7 @@ public class MqttBrokerConnection implements MqttCallback {
     /**
      * Create a trust manager which is not too concerned about validating
      * certificates.
-     * 
+     *
      * @return a trusting trust manager
      */
     private TrustManager getVeryTrustingTrustManager() {
@@ -381,7 +411,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Add a new message producer to this connection.
-     * 
+     *
      * @param publisher
      *            to add.
      */
@@ -394,7 +424,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Start a registered producer, so that it can start sending messages.
-     * 
+     *
      * @param publisher
      *            to start.
      */
@@ -439,7 +469,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Add a new message consumer to this connection.
-     * 
+     *
      * @param consumer
      *            to add.
      */
@@ -452,7 +482,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Start a registered consumer, so that it can start receiving messages.
-     * 
+     *
      * @param subscriber
      *            to start.
      */
@@ -470,7 +500,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Remove a previously registered producer from this connection.
-     * 
+     *
      * @param publisher
      *            to remove.
      */
@@ -482,7 +512,7 @@ public class MqttBrokerConnection implements MqttCallback {
 
     /**
      * Remove a previously registered consumer from this connection.
-     * 
+     *
      * @param subscriber
      *            to remove.
      */
@@ -557,7 +587,7 @@ public class MqttBrokerConnection implements MqttCallback {
     /**
      * Check if the topic on which a message was received matches provided
      * target topic. The matching will take into account the + and # wildcards.
-     * 
+     *
      * @param source
      *            topic from received message
      * @param target
@@ -592,7 +622,7 @@ public class MqttBrokerConnection implements MqttCallback {
      * If no heartbeat is received within this timeframe, the connection
      * will be considered dead. Set this to a higher value on systems which may
      * not always be able to process the heartbeat in time.
-     * 
+     *
      * @param keepAliveInterval interval in seconds
      */
     public void setKeepAliveInterval(int keepAliveInterval) {
