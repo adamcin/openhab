@@ -359,6 +359,7 @@ public class MqttBrokerConnection implements MqttCallback {
                     }
                 }
 
+                logger.error("keyManagers is not empty? {}", keyManagers != null && keyManagers.length > 0);
                 sslContext.init(keyManagers, new TrustManager[] { getVeryTrustingTrustManager() },
                         new java.security.SecureRandom());
                 SSLSocketFactory socketFactory = sslContext.getSocketFactory();
